@@ -1,3 +1,36 @@
+# Sail Containers changelog
+
+## 0.1.0 - 2026-06-05
+
+### Added
+* **client:** The main `SailContainers::Client` facade exposing the engine's primary API (`create`, `destroy`, `start`, `stop`, `restart`, `info`, `list`).
+* **core:** Thread-safe `ResourceManager` utilizing Crystal 1.20 `Sync::Mutex` to allocate and track CPU core pinning in memory.
+* **infrastructure:** `LxcConfigEditor` to orchestrate LXC configuration files. It specifically parses, manages, and updates orchestrated directives (`lxc.net.*`, `lxc.cgroup2.*`) while safely preserving any custom directives added manually by sysadmins.
+* **infrastructure:** `StateBootstrapper` that reads reality directly from the filesystem upon initialization, effectively mapping allocated resources back into memory to strictly avoid "split-brain" database inconsistencies.
+* **infrastructure:** `LxcCliDriver` adapter that executes system binaries using safely isolated `Process.capture_result` arrays, completely eliminating shell injection vulnerabilities.
+* **models:** Introduction of the `Container` DTO for clean, serializable data transport.
+
+### Architecture
+* **design:** Strict Hexagonal (Ports and Adapters) architecture boundary. Domain logic has zero knowledge of the filesystem or external CLI tools.
+* **safety:** Complete adherence to Crystal 1.20 Execution Contexts. Safe for highly concurrent, multi-threaded production environments.
+* **storage:** Native environment-aware branching. Uses `dir` storage for local development, and enforces `lvm` thin pools for production workflows.
+
+### Quality
+* **tests:** 100% code coverage.
+* **ci:** Complete GitHub Actions pipeline executing specs across both single-threaded and `-Dpreview_mt` multi-threaded Crystal execution contexts.
+
+---
+
+### Reboot
+
+2026-06-05
+
+Source code completely restarted to change from a working proof-of-concept to a more organized codebase.
+Name also changed from Admira Containers to Sail Containers (to be used at Airsailer Cloud Platform).
+CLI is expected to be created at the Airsailer Cloud Platform, for a higher level of usage and features. Sail Containers is responsible for managing LXC system containers in a single host without being concerned about cloud computing responsibilities, like projects, tenants, etc.
+
+---
+
 # Admira Containers - admiractl changelog
 
 ## 0.12.0 - 2024-07-14

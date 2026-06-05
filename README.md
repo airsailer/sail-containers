@@ -1,77 +1,111 @@
-# admiractl
+# Sail Containers
 
-admiractl is a system container manager for Linux containers. It aims to provide containers as faster alternatives to virtual machines (VMs), together with all the functionality necessary to manage those, including hardware resources, OS templates, network and storage.
+**Sail Containers** is a highly efficient, opinionated System Container Engine and Node-Level Manager for LXC, built in Crystal.
 
-The complete library is packed in a compiled binary, and it can be used through cli interface or sockets REST API.
+It operates exclusively on a single host node and is responsible for the efficient execution of Linux containers, strict hardware resource tracking, and local network/storage setup. It serves as the foundational host-level engine for [Airsailer](https://github.com/airsailer/airsailer) (Cloud Orchestrator).
 
-## Minimum requirements
+## Table of Contents
+1. [Core Philosophy](#core-philosophy)
+2. [Prerequisites](#prerequisites)
+3. [Installation](#installation)
+4. [Usage](#usage)
+5. [Architecture](#architecture)
+6. [Contributing](#contributing)
+7. [License](#license)
 
-Because it is meant to be used only with cgroups v2, the minimum requirements are:
+## Core Philosophy
 
-- Linux Kernel version is 5.8 or later (LTS versions from 5.10+ recommended)
-- Linux distribution with cgroups v2 support (see list below)
+* **Strict Resource Management:** The engine maps and allocates hardware precisely. We prioritize performance predictability over over-provisioning.
+* **Opinionated Simplicity:** We utilize built-in Linux primitives (cgroups v2, IPVLAN L3S, LVM thin pools) instead of heavy external overlays.
+* **No Split-Brain:** Sail Containers does not use a secondary database (like SQLite) to track state. The filesystem (`/var/lib/lxc/*/config`) is the single source of truth, bootstrapped into memory on boot.
+* **Library-First Design:** It is designed strictly as a modular Crystal library with a clean API, ready to be embedded into larger orchestrators.
 
-**Compatible Linux distributions**
+## Prerequisites
 
-- Ubuntu (since 21.10, 22.04+ recommended)
-- Debian (since 11 bullseye)
-- Fedora (since 31)
-- Arch Linux (since April 2021)
-- RHEL and derivatives (since 9)
+* **OS:** Linux distribution with `cgroups v2` support (Ubuntu 22.04+, Debian 11+).
+* **Dependencies:** `lxc` installed on the host node.
+* **Crystal:** `1.20.0` or higher.
 
-## Development roadmap
+## Installation
 
-This is the current development status for the CLI:
+Add this to your application's `shard.yml`:
 
-**Container management**
-- [x] `create <name>` container with default template
-- [x] `create <name> --template <template_name>` container with chosen template
-- [x] basic `list` containers
-- [x] complete `list` containers, with resource usage stats
-- [ ] sortable `list` containers, based on chosen column
-- [x] `start <name>`, `stop <name>` and `restart <name>`
-- [x] `delete <name>` container
+```yaml
+dependencies:
+  sail_containers:
+    github: airsailer/sail-containers
+```
 
-**Resource management (cpu, ram, storage)**
-- [x] `set <name> --cpus N`
-- [x] `set <name> --ram N{unit}`
-- [x] `set <name> --swap N{unit}`
-- [ ] `set <name> --disk N{unit}`
+## Usage
 
-**General management**
-- [x] `set <name> --hostname <hostname>`
-- [ ] `set <name> --user <username> --password`
-- [x] `enter <name>` to initiate a terminal session inside a container
+Interaction with the engine is done entirely through the `SailContainers::Client` facade.
 
-**Template management**
-- [x] `template list`
+### Initialization
 
-**Network management**
-- [ ] `ip4 add` and `ip4 remove`
-- [ ] `ip6 add` and `ip6 remove`
+```crystal
+require "sail_containers"
 
-**Proxy management**
+# 'local' uses directory-backed storage. 
+# 'production' uses LVM thin-pools.
+client = SailContainers::Client.new(env: "production")
+```
 
-Update: proxy management is now being managed by a separated library, named Narnia
+### Creating and Managing Containers
 
-- [x] `proxy set <domain>` to create or update a proxy
-- [x] `proxy delete <domain>` to delete an existing proxy
-- [x] `proxy ssl <domain>` to check and update ssl certificates
-- [x] `proxy list` to list all existing proxies
+```crystal
+# Create a container with strict limits (2 CPUs, 1024MB RAM, 10GB Disk)
+client.create(
+  name: "web-01",
+  template: "ubuntu",
+  cpus: 2,
+  ram_mb: 1024,
+  disk_gb: 10,
+  ip: "10.0.0.50",
+  autostart: true
+)
 
-**Quality**
-- [ ] Automated tests
+# Lifecycle management
+client.stop("web-01")
+client.start("web-01")
+client.restart("web-01")
+
+# Destruction
+client.destroy("web-01")
+```
+
+### Inspection
+
+```crystal
+# Get information about a specific container
+container = client.info("web-01")
+puts container.state      # => "running"
+puts container.ip_address # => "10.0.0.50"
+
+# List all containers on the host
+containers = client.list
+containers.each do |c|
+  puts "#{c.name} is currently #{c.state}"
+end
+```
+
+## Architecture
+
+Sail Containers strictly enforces a **Hexagonal (Ports and Adapters)** architecture:
+
+* **Core (`/core`):** Pure domain logic (e.g., `ResourceManager`). Mathematical allocation of CPU pinning entirely isolated from the filesystem or host OS.
+* **Infrastructure (`/infrastructure`):** Adapters for system execution (`LxcCliDriver`), file manipulation (`LxcConfigEditor`), and real-world state syncing (`StateBootstrapper`).
+* **Hybrid Config Editor:** Orchestrated configurations (`lxc.net.*`, `lxc.cgroup2.*`) are managed dynamically, while unknown custom directives added by sysadmins are safely preserved at the bottom of the config files.
+
+All system calls are protected against shell injection using Crystal's `Process.capture_result` with strict arrays, and all memory states are synchronized using `Sync::Mutex` for safe execution in Crystal's `preview_mt` multi-threaded contexts.
 
 ## Contributing
 
-1. Fork it (<https://github.com/admiracloud/admira-containers/fork>)
+1. Fork it (<https://github.com/airsailer/sail-containers/fork>)
 2. Create your feature branch (`git checkout -b my-new-feature`)
 3. Commit your changes (`git commit -am 'Add some feature'`)
 4. Push to the branch (`git push origin my-new-feature`)
 5. Create a new Pull Request
 
-## Contributors
+## License
 
-- [Paulo Coghi](https://github.com/paulocoghi) - creator and maintainer
-
-(c) Copyright by Admira Cloud LLC (previously Adimira LLC)
+This project is licensed under the MIT License.
