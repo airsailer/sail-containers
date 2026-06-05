@@ -72,5 +72,9 @@ module SailContainers::Infrastructure
         end
       end
     end
+
+    def clear_prefix(prefix : String) : Nil
+      @managed_config.reject! { |k, _| k.starts_with?(prefix) }
+    end
   end
 end

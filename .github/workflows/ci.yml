@@ -104,7 +104,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: alumna/sail-containers
+          slug: airsailer/sail-containers
           files: ./coverage/**/cobertura.xml,./coverage/**/cov.xml,./coverage/unreachable.codecov.json,./coverage/macro_coverage.*.codecov.json
           flags: unittests
           fail_ci_if_error: true
@@ -120,7 +120,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: alumna/sail-containers
+          slug: airsailer/sail-containers
           report_type: test_results
           files: ./junit/output.xml
           flags: unittests

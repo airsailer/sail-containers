@@ -12,15 +12,24 @@ class TestLxcCliDriver < SailContainers::Infrastructure::LxcCliDriver
 end
 
 describe SailContainers::Infrastructure::LxcCliDriver do
-  it "constructs the create command securely without shell evaluation" do
+  it "constructs the remote create command securely" do
     driver = TestLxcCliDriver.new
-    driver.create("my-container", "ubuntu", ["-B", "dir"])
+    driver.create("my-container", "ubuntu", "noble", false, ["-B", "dir"])
 
     executed = driver.executed_commands.first
-    # We expect exactly these string arguments passed to Process
     executed.should eq([
       "lxc-create", "-n", "my-container", "-B", "dir",
-      "--template", "download", "--", "--dist", "ubuntu", "--arch", "amd64",
+      "--template", "download", "--", "--dist", "ubuntu", "--release", "noble", "--arch", "amd64",
+    ])
+  end
+
+  it "constructs the local copy command securely" do
+    driver = TestLxcCliDriver.new
+    driver.create("my-container", "offline-base-img", nil, true, ["-B", "lvm", "--fssize", "10G"])
+
+    executed = driver.executed_commands.first
+    executed.should eq([
+      "lxc-copy", "-n", "offline-base-img", "-N", "my-container", "-B", "lvm", "--fssize", "10G",
     ])
   end
 
