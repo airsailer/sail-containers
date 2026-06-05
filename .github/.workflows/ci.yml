@@ -1,0 +1,128 @@
+name: Crystal CI
+
+on:
+  # Triggers when a PR is opened or updated
+  pull_request:
+    branches:
+      - master
+
+  # Triggers when code is merged to main, OR directly pushed to main
+  push:
+    branches:
+      - master
+    # Do not trigger a run if the ONLY changes are to these files:
+    paths-ignore:
+      - '**.md'      # Ignores README.md, CHANGELOG.md, etc.
+      - 'LICENSE'
+
+# Automatically cancel in-progress runs if a new commit is pushed to the same PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        # os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest]
+        crystal: [latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: ${{ matrix.crystal }}
+      - uses: actions/cache@v4
+        with:
+          path: |
+            lib
+            ~/.cache/shards
+            %USERPROFILE%\.cache\shards
+          key: ${{ runner.os }}-crystal-${{ matrix.crystal }}-shards-${{ hashFiles('shard.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-crystal-${{ matrix.crystal }}-shards-
+      - run: shards install
+      - run: crystal tool format --check
+
+      # 1. Run standard (Single-Threaded) tests
+      - name: Run specs (Single-Threaded)
+        run: crystal spec --error-trace --verbose
+
+      # 2. Run Execution Context (Multi-Threaded) tests
+      - name: Run specs (Multi-Threaded)
+        run: crystal spec -Dpreview_mt -Dexecution_context --error-trace --verbose
+
+  coverage:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Install kcov
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y kcov
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            lib
+            ~/.cache/shards
+          key: ubuntu-22.04-crystal-latest-shards-${{ hashFiles('shard.yml') }}
+
+      - run: shards install
+
+      - name: Build specs binary
+        run: |
+          echo 'require "./spec/**"' > all_specs.cr
+          mkdir -p bin coverage
+          crystal build all_specs.cr -o bin/all_specs --debug
+
+      - name: Run kcov (core coverage)
+        run: |
+          kcov --clean --include-path=$(pwd)/src ./coverage ./bin/all_specs
+
+      - name: Generate unreachable report
+        run: |
+          crystal tool unreachable --format=codecov --no-color --exclude spec all_specs.cr > ./coverage/unreachable.codecov.json
+
+      - name: Generate macro coverage
+        run: |
+          crystal tool macro_code_coverage --format=codecov --no-color all_specs.cr > ./coverage/macro_coverage.root.codecov.json
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: alumna/sail-containers
+          files: ./coverage/**/cobertura.xml,./coverage/**/cov.xml,./coverage/unreachable.codecov.json,./coverage/macro_coverage.*.codecov.json
+          flags: unittests
+          fail_ci_if_error: true
+          verbose: true
+
+      - name: Run specs and generate JUnit XML for Test Analytics
+        run: |
+          mkdir -p junit
+          crystal spec --junit_output ./junit --error-trace
+
+      - name: Upload test results to Codecov (Test Analytics)
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: alumna/sail-containers
+          report_type: test_results
+          files: ./junit/output.xml
+          flags: unittests
+          fail_ci_if_error: false
+          verbose: true
