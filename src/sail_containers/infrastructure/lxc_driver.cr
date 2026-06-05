@@ -1,7 +1,6 @@
 require "../exceptions"
 
 module SailContainers::Infrastructure
-  # The abstract boundary representing interactions with the underlying container engine.
   abstract class LxcDriver
     abstract def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
     abstract def start(name : String) : Nil
@@ -10,16 +9,16 @@ module SailContainers::Infrastructure
     abstract def destroy(name : String) : Nil
   end
 
-  # The concrete implementation that talks to the LXC CLI using strict Process bindings.
   class LxcCliDriver < LxcDriver
     def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
       if local_template
-        # lxc-copy uses -n for the source container, and -N for the new container
         args = ["-n", template, "-N", name] + storage_args
         execute!("lxc-copy", args)
       else
-        # lxc-create uses -n for the new container
-        args = ["-n", name] + storage_args + ["--template", "download", "--", "--dist", template, "--release", release.not_nil!, "--arch", "amd64"]
+        # Safely unwrap release to strictly avoid .not_nil!
+        safe_release = release || raise Exceptions::ConfigurationError.new("Release is strictly required for remote templates")
+
+        args = ["-n", name] + storage_args + ["--template", "download", "--", "--dist", template, "--release", safe_release, "--arch", "amd64"]
         execute!("lxc-create", args)
       end
     end
@@ -37,17 +36,14 @@ module SailContainers::Infrastructure
     end
 
     def running?(name : String) : Bool
-      # Process.capture_result is Crystal 1.20 standard
       result = Process.capture_result(["lxc-info", "-n", name, "--state"])
       result.output.includes?("RUNNING")
     end
 
-    # Protected wrapper to execute and map errors to our Domain
     protected def execute!(command : String, args : Array(String)) : Nil
       result = Process.capture_result([command] + args)
 
       unless result.status.success?
-        # Clean up the output string to surface the actual LXC error
         error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
         raise Exceptions::SystemExecutionError.new("Command '#{command} #{args.join(" ")}' failed: #{error_msg}")
       end

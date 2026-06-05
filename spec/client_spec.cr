@@ -63,7 +63,8 @@ describe SailContainers::Client do
   describe "#create" do
     it "executes the full creation workflow and writes configurations" do
       with_test_client do |client, driver, _, temp_dir|
-        client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", ip: "10.0.0.5", autostart: true)
+        networks = [SailContainers::Models::Network.new("sail0", "10.0.0.5/20")]
+        client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", networks: networks, autostart: true)
 
         driver.created.should contain("test-node")
         driver.started.should contain("test-node")
@@ -78,7 +79,8 @@ describe SailContainers::Client do
         driver.should_fail_on_create = true
 
         expect_raises(SailContainers::Exceptions::SystemExecutionError) do
-          client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", ip: "10.0.0.5")
+          networks = [SailContainers::Models::Network.new("sail0", "10.0.0.5/20")]
+          client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", networks: networks)
         end
 
         resources.active_allocations.has_key?("test-node").should be_false
@@ -89,7 +91,8 @@ describe SailContainers::Client do
   describe "Lifecycle Methods" do
     it "can stop, start, and restart an existing container" do
       with_test_client do |client, driver, _, _|
-        client.create(name: "lifecycle-node", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "10G", ip: "10.0.0.2", autostart: true)
+        networks = [SailContainers::Models::Network.new("sail0", "10.0.0.2/20")]
+        client.create(name: "lifecycle-node", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "10G", networks: networks, autostart: true)
         driver.running?("lifecycle-node").should be_true
 
         client.stop("lifecycle-node")
@@ -116,12 +119,14 @@ describe SailContainers::Client do
   describe "Inspection Methods" do
     it "returns info for a specific container" do
       with_test_client do |client, _, _, _|
-        client.create(name: "info-node", template: "ubuntu", release: "noble", cpus: 2, ram: "2048M", disk: "10G", ip: "10.0.0.10", autostart: false)
+        networks = [SailContainers::Models::Network.new("sail0", "10.0.0.10/20")]
+        client.create(name: "info-node", template: "ubuntu", release: "noble", cpus: 2, ram: "2048M", disk: "10G", networks: networks, autostart: false)
 
         info = client.info("info-node")
         info.name.should eq("info-node")
         info.state.should eq("stopped")
-        info.ip_address.should eq("10.0.0.10")
+        info.networks.first.ip.should eq("10.0.0.10/20")
+        info.networks.first.link.should eq("sail0")
         info.cpus.should eq("0,1")
         info.ram.should eq("2048M")
       end
@@ -129,8 +134,10 @@ describe SailContainers::Client do
 
     it "returns a list of all containers" do
       with_test_client do |client, _, _, _|
-        client.create(name: "node-a", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "5G", ip: "10.0.0.11", autostart: true)
-        client.create(name: "node-b", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "5G", ip: "10.0.0.12", autostart: false)
+        networks1 = [SailContainers::Models::Network.new("sail0", "10.0.0.11/20")]
+        networks2 = [SailContainers::Models::Network.new("sail0", "10.0.0.12/20")]
+        client.create(name: "node-a", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "5G", networks: networks1, autostart: true)
+        client.create(name: "node-b", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "5G", networks: networks2, autostart: false)
 
         # Sort by name to guarantee deterministic ordering without needing .find or .not_nil!
         list = client.list.sort_by(&.name)
@@ -152,7 +159,8 @@ describe SailContainers::Client do
   describe "#destroy" do
     it "destroys the container and releases resources" do
       with_test_client do |client, driver, resources, _|
-        client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", ip: "10.0.0.5")
+        networks = [SailContainers::Models::Network.new("sail0", "10.0.0.5/20")]
+        client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", networks: networks)
         client.destroy("test-node")
 
         driver.destroyed.should contain("test-node")

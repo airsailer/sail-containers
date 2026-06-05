@@ -56,10 +56,10 @@ module SailContainers
       cpus : Int32 = 1,
       ram : String | Int32 = "512M",
       disk : String | Int32 = "10G",
-      ip : String = "",
+      networks : Array(Models::Network) = [] of Models::Network,
       autostart : Bool = true,
     ) : Nil
-      if !local_template && release.nil?
+      if !local_template && !release
         raise Exceptions::ConfigurationError.new("A 'release' must be specified when using a remote template.")
       end
 
@@ -73,7 +73,7 @@ module SailContainers
         @driver.create(name, template, release, local_template, storage_args)
 
         config_path = File.join(@lxc_base_path, name, "config")
-        inject_orchestrated_config!(config_path, name, pinned_cpus, normalized_ram, ip, autostart)
+        inject_orchestrated_config!(config_path, name, pinned_cpus, normalized_ram, networks, autostart)
 
         @driver.start(name) if autostart
       rescue ex : Exception
@@ -97,10 +97,19 @@ module SailContainers
       editor = Infrastructure::LxcConfigEditor.new(config_path)
       is_running = @driver.running?(name)
 
+      # Extract all dynamically generated networks
+      parsed_networks = [] of Models::Network
+      editor.managed_config.keys.select { |k| k.matches?(/^lxc\.net\.\d+\.link$/) }.each do |key|
+        index = key.split(".")[2] # Extract the "N" from "lxc.net.N.link"
+        link = editor.get(key) || ""
+        ip = editor.get("lxc.net.#{index}.ipv4.address") || ""
+        parsed_networks << Models::Network.new(link: link, ip: ip)
+      end
+
       Models::Container.new(
         name: name,
         state: is_running ? "running" : "stopped",
-        ip_address: editor.get("lxc.net.0.ipv4.address"),
+        networks: parsed_networks,
         cpus: editor.get("lxc.cgroup2.cpuset.cpus"),
         ram: editor.get("lxc.cgroup2.memory.max")
       )
@@ -125,7 +134,7 @@ module SailContainers
       end
     end
 
-    private def inject_orchestrated_config!(path : String, name : String, cpus : String, ram : String, ip : String, autostart : Bool) : Nil
+    private def inject_orchestrated_config!(path : String, name : String, cpus : String, ram : String, networks : Array(Models::Network), autostart : Bool) : Nil
       config = Infrastructure::LxcConfigEditor.new(path)
 
       config.set("lxc.uts.name", name)
@@ -133,10 +142,21 @@ module SailContainers
       config.set("lxc.cgroup2.memory.max", ram)
       config.set("lxc.cgroup2.memory.swap.max", "0")
       config.set("lxc.start.auto", autostart ? "1" : "0")
-      config.set("lxc.net.0.type", "ipvlan")
-      config.set("lxc.net.0.ipvlan.mode", "l3s")
-      config.set("lxc.net.0.l2proxy", "1")
-      config.set("lxc.net.0.ipv4.address", ip)
+
+      # Wipe previous orchestrated network settings
+      config.clear_prefix("lxc.net.")
+
+      # Inject multi-vlan configurations identically to the DeepWiki specs
+      networks.each_with_index do |net, index|
+        prefix = "lxc.net.#{index}"
+        config.set("#{prefix}.type", "ipvlan")
+        config.set("#{prefix}.ipvlan.mode", "l3s")
+        config.set("#{prefix}.link", net.link)
+        config.set("#{prefix}.flags", "up")
+        config.set("#{prefix}.ipv4.address", net.ip)
+        config.set("#{prefix}.ipv4.gateway", "dev")
+        config.set("#{prefix}.l2proxy", "1")
+      end
 
       config.save!
     end

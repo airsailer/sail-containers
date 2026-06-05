@@ -73,4 +73,18 @@ describe SailContainers::Infrastructure::LxcConfigEditor do
       end
     end
   end
+
+  describe "#clear_prefix" do
+    it "removes keys matching a specific prefix" do
+      with_temp_file do |path|
+        editor = SailContainers::Infrastructure::LxcConfigEditor.new(path)
+        editor.set("lxc.net.0.type", "ipvlan")
+        editor.set("lxc.uts.name", "my-node")
+
+        editor.clear_prefix("lxc.net.")
+        editor.get("lxc.net.0.type").should be_nil
+        editor.get("lxc.uts.name").should eq("my-node")
+      end
+    end
+  end
 end
