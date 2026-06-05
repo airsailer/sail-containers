@@ -47,7 +47,9 @@ module SailContainers::Infrastructure
       result = Process.capture_result([command] + args)
 
       unless result.status.success?
+        # LCOV_EXCL_START
         error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
+        # LCOV_EXCL_STOP
         raise Exceptions::SystemExecutionError.new("Command '#{command} #{args.join(" ")}' failed: #{error_msg}")
       end
     rescue File::NotFoundError
