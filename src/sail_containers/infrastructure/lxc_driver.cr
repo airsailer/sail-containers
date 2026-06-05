@@ -38,6 +38,9 @@ module SailContainers::Infrastructure
     def running?(name : String) : Bool
       result = Process.capture_result(["lxc-info", "-n", name, "--state"])
       result.output.includes?("RUNNING")
+    rescue File::NotFoundError
+      # If lxc-info is missing entirely from the host OS, it's definitely not running.
+      false
     end
 
     protected def execute!(command : String, args : Array(String)) : Nil
@@ -47,6 +50,9 @@ module SailContainers::Infrastructure
         error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
         raise Exceptions::SystemExecutionError.new("Command '#{command} #{args.join(" ")}' failed: #{error_msg}")
       end
+    rescue File::NotFoundError
+      # Map the missing binary error strictly to our Domain Exception
+      raise Exceptions::SystemExecutionError.new("LXC CLI tool '#{command}' is not installed or not found in PATH.")
     end
   end
 end
