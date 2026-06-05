@@ -15,7 +15,7 @@ on:
       - '**.md'      # Ignores README.md, CHANGELOG.md, etc.
       - 'LICENSE'
 
-# Automatically cancel in-progress runs if a new commit is pushed to the same PR
+# Automatically cancel in-progress runs if a new commit is pushed to the same PR.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
