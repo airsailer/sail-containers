@@ -3,7 +3,7 @@ require "../exceptions"
 module SailContainers::Infrastructure
   # The abstract boundary representing interactions with the underlying container engine.
   abstract class LxcDriver
-    abstract def create(name : String, template : String, storage_args : Array(String)) : Nil
+    abstract def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
     abstract def start(name : String) : Nil
     abstract def stop(name : String) : Nil
     abstract def running?(name : String) : Bool
@@ -12,10 +12,16 @@ module SailContainers::Infrastructure
 
   # The concrete implementation that talks to the LXC CLI using strict Process bindings.
   class LxcCliDriver < LxcDriver
-    def create(name : String, template : String, storage_args : Array(String)) : Nil
-      # Uses strictly defined arrays to prevent shell injections
-      base_args = ["-n", name] + storage_args + ["--template", "download", "--", "--dist", template, "--arch", "amd64"]
-      execute!("lxc-create", base_args)
+    def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
+      if local_template
+        # lxc-copy uses -n for the source container, and -N for the new container
+        args = ["-n", template, "-N", name] + storage_args
+        execute!("lxc-copy", args)
+      else
+        # lxc-create uses -n for the new container
+        args = ["-n", name] + storage_args + ["--template", "download", "--", "--dist", template, "--release", release.not_nil!, "--arch", "amd64"]
+        execute!("lxc-create", args)
+      end
     end
 
     def start(name : String) : Nil

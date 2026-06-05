@@ -9,7 +9,7 @@ class MockLxcDriver < SailContainers::Infrastructure::LxcDriver
   property should_fail_on_create = false
   property lxc_base_path = "/var/lib/lxc"
 
-  def create(name : String, template : String, storage_args : Array(String)) : Nil
+  def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
     raise SailContainers::Exceptions::SystemExecutionError.new("Mocked failure") if @should_fail_on_create
     @created << name
 
@@ -63,7 +63,7 @@ describe SailContainers::Client do
   describe "#create" do
     it "executes the full creation workflow and writes configurations" do
       with_test_client do |client, driver, _, temp_dir|
-        client.create("test-node", "ubuntu", 2, 1024, 10, "10.0.0.5", true)
+        client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", ip: "10.0.0.5", autostart: true)
 
         driver.created.should contain("test-node")
         driver.started.should contain("test-node")
@@ -78,7 +78,7 @@ describe SailContainers::Client do
         driver.should_fail_on_create = true
 
         expect_raises(SailContainers::Exceptions::SystemExecutionError) do
-          client.create("test-node", "ubuntu", 2, 1024, 10, "10.0.0.5")
+          client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", ip: "10.0.0.5")
         end
 
         resources.active_allocations.has_key?("test-node").should be_false
@@ -89,7 +89,7 @@ describe SailContainers::Client do
   describe "Lifecycle Methods" do
     it "can stop, start, and restart an existing container" do
       with_test_client do |client, driver, _, _|
-        client.create("lifecycle-node", "ubuntu", 1, 512, 10, "10.0.0.2", autostart: true)
+        client.create(name: "lifecycle-node", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "10G", ip: "10.0.0.2", autostart: true)
         driver.running?("lifecycle-node").should be_true
 
         client.stop("lifecycle-node")
@@ -116,7 +116,7 @@ describe SailContainers::Client do
   describe "Inspection Methods" do
     it "returns info for a specific container" do
       with_test_client do |client, _, _, _|
-        client.create("info-node", "ubuntu", 2, 2048, 10, "10.0.0.10", autostart: false)
+        client.create(name: "info-node", template: "ubuntu", release: "noble", cpus: 2, ram: "2048M", disk: "10G", ip: "10.0.0.10", autostart: false)
 
         info = client.info("info-node")
         info.name.should eq("info-node")
@@ -129,8 +129,8 @@ describe SailContainers::Client do
 
     it "returns a list of all containers" do
       with_test_client do |client, _, _, _|
-        client.create("node-a", "ubuntu", 1, 512, 5, "10.0.0.11", autostart: true)
-        client.create("node-b", "ubuntu", 1, 512, 5, "10.0.0.12", autostart: false)
+        client.create(name: "node-a", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "5G", ip: "10.0.0.11", autostart: true)
+        client.create(name: "node-b", template: "ubuntu", release: "noble", cpus: 1, ram: "512M", disk: "5G", ip: "10.0.0.12", autostart: false)
 
         # Sort by name to guarantee deterministic ordering without needing .find or .not_nil!
         list = client.list.sort_by(&.name)
@@ -152,7 +152,7 @@ describe SailContainers::Client do
   describe "#destroy" do
     it "destroys the container and releases resources" do
       with_test_client do |client, driver, resources, _|
-        client.create("test-node", "ubuntu", 2, 1024, 10, "10.0.0.5")
+        client.create(name: "test-node", template: "ubuntu", release: "noble", cpus: 2, ram: "1024M", disk: "10G", ip: "10.0.0.5")
         client.destroy("test-node")
 
         driver.destroyed.should contain("test-node")

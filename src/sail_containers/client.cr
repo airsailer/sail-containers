@@ -48,15 +48,32 @@ module SailContainers
 
     # --- Creation & Destruction ---
 
-    def create(name : String, template : String, cpus : Int32, ram_mb : Int32, disk_gb : Int32, ip : String, autostart : Bool = true) : Nil
+    def create(
+      name : String,
+      template : String,
+      release : String? = nil,
+      local_template : Bool = false,
+      cpus : Int32 = 1,
+      ram : String | Int32 = "512M",
+      disk : String | Int32 = "10G",
+      ip : String = "",
+      autostart : Bool = true,
+    ) : Nil
+      if !local_template && release.nil?
+        raise Exceptions::ConfigurationError.new("A 'release' must be specified when using a remote template.")
+      end
+
+      normalized_ram = normalize_ram(ram)
+      normalized_disk = normalize_disk(disk)
+
       pinned_cpus = @resources.allocate_cpus!(name, cpus)
 
       begin
-        storage_args = resolve_storage_args(disk_gb)
-        @driver.create(name, template, storage_args)
+        storage_args = resolve_storage_args(normalized_disk)
+        @driver.create(name, template, release, local_template, storage_args)
 
         config_path = File.join(@lxc_base_path, name, "config")
-        inject_orchestrated_config!(config_path, name, pinned_cpus, ram_mb, ip, autostart)
+        inject_orchestrated_config!(config_path, name, pinned_cpus, normalized_ram, ip, autostart)
 
         @driver.start(name) if autostart
       rescue ex : Exception
@@ -73,7 +90,6 @@ module SailContainers
 
     # --- Inspection Methods ---
 
-    # Retrieves real-time data about a specific container
     def info(name : String) : Models::Container
       ensure_exists!(name)
 
@@ -90,7 +106,6 @@ module SailContainers
       )
     end
 
-    # Retrieves info for all containers managed by this engine
     def list : Array(Models::Container)
       search_pattern = File.join(@lxc_base_path, "*", "config")
 
@@ -110,12 +125,12 @@ module SailContainers
       end
     end
 
-    private def inject_orchestrated_config!(path : String, name : String, cpus : String, ram_mb : Int32, ip : String, autostart : Bool) : Nil
+    private def inject_orchestrated_config!(path : String, name : String, cpus : String, ram : String, ip : String, autostart : Bool) : Nil
       config = Infrastructure::LxcConfigEditor.new(path)
 
       config.set("lxc.uts.name", name)
       config.set("lxc.cgroup2.cpuset.cpus", cpus)
-      config.set("lxc.cgroup2.memory.max", "#{ram_mb}M")
+      config.set("lxc.cgroup2.memory.max", ram)
       config.set("lxc.cgroup2.memory.swap.max", "0")
       config.set("lxc.start.auto", autostart ? "1" : "0")
       config.set("lxc.net.0.type", "ipvlan")
@@ -126,12 +141,32 @@ module SailContainers
       config.save!
     end
 
-    private def resolve_storage_args(disk_gb : Int32) : Array(String)
+    private def resolve_storage_args(disk : String) : Array(String)
       if @env == "production"
-        ["-B", "lvm", "--vgname", "vg0", "--thinpool", "airsailer", "--fssize", "#{disk_gb}G"]
+        ["-B", "lvm", "--vgname", "vg0", "--thinpool", "airsailer", "--fstype", "ext4", "--fssize", disk]
       else
         ["-B", "dir"]
       end
+    end
+
+    private def normalize_size(value : String | Int32, default_unit : String, allowed_units : Array(Char)) : String
+      str_val = value.to_s.strip.upcase
+      return "#{str_val}#{default_unit}" if str_val.matches?(/^\d+$/)
+
+      match = str_val.match(/^(\d+)([A-Z])$/)
+      if match && allowed_units.includes?(match[2][0])
+        return str_val
+      end
+
+      raise Exceptions::ConfigurationError.new("Invalid size format: '#{value}'")
+    end
+
+    private def normalize_ram(ram : String | Int32) : String
+      normalize_size(ram, "M", ['K', 'M', 'G', 'T'])
+    end
+
+    private def normalize_disk(disk : String | Int32) : String
+      normalize_size(disk, "G", ['M', 'G', 'T', 'P'])
     end
   end
 end
