@@ -1,11 +1,10 @@
 require "spec"
 require "../../src/sail_containers/infrastructure/lxc_driver"
+require "../../src/sail_containers/exceptions"
 
-# We create a spy class specifically for testing command construction
 class TestLxcCliDriver < SailContainers::Infrastructure::LxcCliDriver
   getter executed_commands = [] of Array(String)
 
-  # Override the protected method to capture instead of execute
   protected def execute!(command : String, args : Array(String)) : Nil
     @executed_commands << ([command] + args)
   end
@@ -33,10 +32,32 @@ describe SailContainers::Infrastructure::LxcCliDriver do
     ])
   end
 
-  it "constructs the start command" do
+  it "constructs the start, stop, and destroy commands securely" do
     driver = TestLxcCliDriver.new
-    driver.start("my-container")
 
-    driver.executed_commands.first.should eq(["lxc-start", "-n", "my-container"])
+    driver.start("my-container")
+    driver.executed_commands.last.should eq(["lxc-start", "-n", "my-container"])
+
+    driver.stop("my-container")
+    driver.executed_commands.last.should eq(["lxc-stop", "-n", "my-container"])
+
+    driver.destroy("my-container")
+    driver.executed_commands.last.should eq(["lxc-destroy", "-n", "my-container", "--force"])
+  end
+
+  # Test the actual execution paths on the real driver
+  it "executes real processes and maps failures to SystemExecutionError" do
+    real_driver = SailContainers::Infrastructure::LxcCliDriver.new
+
+    expect_raises(SailContainers::Exceptions::SystemExecutionError) do
+      # Running start on a non-existent container will definitely fail
+      real_driver.start("non-existent-container-12345")
+    end
+  end
+
+  it "returns false for running? when container is non-existent or stopped" do
+    real_driver = SailContainers::Infrastructure::LxcCliDriver.new
+    # lxc-info on a non-existent container won't output "RUNNING"
+    real_driver.running?("non-existent-container-12345").should be_false
   end
 end

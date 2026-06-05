@@ -1,0 +1,47 @@
+name: E2E Integration Tests (LXC & LVM)
+
+on:
+  # 1. Allow maintainers to click "Run workflow" from the Actions tab
+  workflow_dispatch:
+  # 2. Trigger when a maintainer adds a label to a PR
+  pull_request:
+    types: [labeled]
+
+jobs:
+  e2e-tests:
+    # ONLY execute if manually triggered, OR if the label exactly matches 'run-e2e'
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'run-e2e'
+
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lxc lxc-templates lxcfs lvm2 uidmap
+
+      - name: Setup LVM Loop Device
+        run: |
+          truncate -s 10G /tmp/lvm_disk.img
+          sudo losetup /dev/loop8 /tmp/lvm_disk.img
+          sudo pvcreate /dev/loop8
+          sudo vgcreate vg0 /dev/loop8
+          sudo lvcreate -l 100%FREE --thinpool airsailer vg0
+
+      - name: Setup Dummy Network Interface (sail0)
+        run: |
+          sudo ip link add name sail0 type dummy
+          sudo ip link set sail0 up
+          sudo sysctl -w net.ipv4.conf.sail0.forwarding=1
+
+      - name: Run E2E Specs
+        run: |
+          # Pass the E2E=true flag, and use sudo -E to preserve it for root execution
+          sudo -E E2E=true crystal spec spec/e2e_lifecycle_spec.cr --error-trace
