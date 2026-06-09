@@ -41,8 +41,16 @@ jobs:
 
       - name: Setup Dummy Network Interface (sail0)
         run: |
+          # Ensure kernel modules are loaded on the GitHub Actions VM
+          sudo modprobe dummy
+          sudo modprobe ipvlan
+
+          # Create and bring up the parent interface
           sudo ip link add name sail0 type dummy
           sudo ip link set sail0 up
+
+          # Enable IP forwarding (Required by LXC l2proxy)
+          sudo sysctl -w net.ipv4.ip_forward=1
           sudo sysctl -w net.ipv4.conf.sail0.forwarding=1
 
       - name: Install Shards
