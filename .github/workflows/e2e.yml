@@ -41,13 +41,15 @@ jobs:
 
       - name: Setup Network Interface (sail0)
         run: |
-          # Ensure kernel modules are loaded on the GitHub Actions VM
           sudo modprobe ipvlan
 
           # Create a veth pair (full Ethernet devices) to act as a valid IPVLAN parent
           sudo ip link add sail0 type veth peer name sail0-peer
           sudo ip link set sail0 up
           sudo ip link set sail0-peer up
+
+          # Assign a gateway IP to the parent interface to avoid routing collisions
+          sudo ip addr add 192.168.200.1/24 dev sail0
 
           # Enable IP forwarding (Required by LXC l2proxy)
           sudo sysctl -w net.ipv4.ip_forward=1

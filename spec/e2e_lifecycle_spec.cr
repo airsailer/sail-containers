@@ -12,7 +12,7 @@ if ENV["E2E"]? == "true"
       client = SailContainers::Client.new(env: "production")
       node_name = "e2e-test-node-#{Time.utc.to_unix_ms}"
 
-      networks = [SailContainers::Models::Network.new("sail0", "10.0.1.10/20")]
+      networks = [SailContainers::Models::Network.new("sail0", "192.168.200.10/24")]
 
       begin
         # 1. CREATE
@@ -28,7 +28,8 @@ if ENV["E2E"]? == "true"
         # 2. VERIFY REALITY
         info = client.info(node_name)
         info.state.should eq("running")
-        info.networks.first.ip.should eq("10.0.1.10/20")
+        # Update the assertion here too
+        info.networks.first.ip.should eq("192.168.200.10/24")
 
         # 3. LIFECYCLE
         client.stop(node_name)
