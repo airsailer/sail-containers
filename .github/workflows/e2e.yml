@@ -41,7 +41,11 @@ jobs:
           sudo ip link set sail0 up
           sudo sysctl -w net.ipv4.conf.sail0.forwarding=1
 
+      - name: Install Shards
+        run: shards install
+
+      - name: Build E2E Specs
+        run: crystal build spec/e2e_lifecycle_spec.cr -o bin/e2e_spec
+
       - name: Run E2E Specs
-        run: |
-          # Pass the E2E=true flag, and use sudo -E to preserve it for root execution
-          sudo -E E2E=true crystal spec spec/e2e_lifecycle_spec.cr --error-trace
+        run: sudo E2E=true ./bin/e2e_spec
