@@ -48,9 +48,6 @@ jobs:
           sudo ip link set sail0 up
           sudo ip link set sail0-peer up
 
-          # Assign a gateway IP to the parent interface to avoid routing collisions
-          sudo ip addr add 192.168.200.1/24 dev sail0
-
           # Enable IP forwarding (Required by LXC l2proxy)
           sudo sysctl -w net.ipv4.ip_forward=1
           sudo sysctl -w net.ipv4.conf.sail0.forwarding=1
