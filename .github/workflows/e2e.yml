@@ -49,7 +49,9 @@ jobs:
         run: shards install
 
       - name: Build E2E Specs
-        run: crystal build spec/e2e_lifecycle_spec.cr -o bin/e2e_spec
+        run: |
+          mkdir -p bin
+          crystal build spec/e2e_lifecycle_spec.cr -o bin/e2e_spec
 
       - name: Run E2E Specs
         run: sudo E2E=true ./bin/e2e_spec
