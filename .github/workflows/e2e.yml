@@ -5,14 +5,18 @@ on:
   workflow_dispatch:
   # 2. Trigger when a maintainer adds a label to a PR
   pull_request:
-    types: [labeled]
+    # 'labeled' = runs immediately when you click the label
+    # 'synchronize' = runs when a new commit is pushed to the PR
+    types: [labeled, synchronize, opened, reopened]
 
 jobs:
   e2e-tests:
     # ONLY execute if manually triggered, OR if the label exactly matches 'run-e2e'
+    # Check if manually triggered OR if the PR's array of labels contains 'run-e2e'
     if: >
       github.event_name == 'workflow_dispatch' ||
-      github.event.label.name == 'run-e2e'
+      github.event.label.name == 'run-e2e' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e')
 
     runs-on: ubuntu-22.04
     steps:
