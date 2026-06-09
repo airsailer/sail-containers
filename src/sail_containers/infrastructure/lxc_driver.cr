@@ -24,7 +24,29 @@ module SailContainers::Infrastructure
     end
 
     def start(name : String) : Nil
-      execute!("lxc-start", ["-n", name])
+      # Always tell LXC to write a trace log so we can debug failures
+      log_path = "/var/log/lxc/#{name}.log"
+
+      # Ensure the directory exists
+      Dir.mkdir_p("/var/log/lxc") unless Dir.exists?("/var/log/lxc")
+
+      args = ["-n", name, "--logfile", log_path, "--logpriority", "TRACE"]
+      result = Process.capture_result(["lxc-start"] + args)
+
+      unless result.status.success?
+        error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
+
+        # If it failed, extract the real reason from the trace log
+        if File.exists?(log_path)
+          # Grab the last 15 lines of the trace log where the fatal error usually lives
+          trace_tail = File.read(log_path).lines.last(15).join("\n")
+          error_msg += "\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
+        end
+
+        raise Exceptions::SystemExecutionError.new("Command 'lxc-start -n #{name}' failed: #{error_msg}")
+      end
+    rescue File::NotFoundError
+      raise Exceptions::SystemExecutionError.new("LXC CLI tool 'lxc-start' is not installed or not found in PATH.")
     end
 
     def stop(name : String) : Nil

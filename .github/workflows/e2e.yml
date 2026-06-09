@@ -63,3 +63,16 @@ jobs:
 
       - name: Run E2E Specs
         run: sudo E2E=true ./bin/e2e_spec
+
+      - name: Dump LXC Diagnostics
+        if: failure()
+        run: |
+          echo "=== cgroup controllers ==="
+          cat /sys/fs/cgroup/cgroup.controllers || true
+          cat /sys/fs/cgroup/cgroup.subtree_control || true
+
+          echo -e "\n=== Container Configs ==="
+          sudo find /var/lib/lxc -name "config" -exec sh -c 'echo "--- {} ---"; sudo cat {}; echo' \;
+
+          echo -e "\n=== lxc-checkconfig ==="
+          sudo lxc-checkconfig
