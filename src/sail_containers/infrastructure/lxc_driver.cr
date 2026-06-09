@@ -38,8 +38,8 @@ module SailContainers::Infrastructure
 
         # If it failed, extract the real reason from the trace log
         if File.exists?(log_path)
-          # Grab the last 15 lines of the trace log where the fatal error usually lives
-          trace_tail = File.read(log_path).lines.last(15).join("\n")
+          # Grab the last 100 lines of the trace log to capture the root SYSERROR
+          trace_tail = File.read(log_path).lines.last(100).join("\n")
           error_msg += "\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
         end
 
