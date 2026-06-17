@@ -30,7 +30,7 @@ module SailContainers::Infrastructure
       # Try to ensure the directory exists, but don't crash if we lack permissions.
       # (Unit tests run unprivileged, and LXC itself will surface the correct error later if it matters).
       begin
-        Dir.mkdir_p("/var/log/lxc") unless Dir.exists?("/var/log/lxc")
+        execute!("mkdir", ["-p", "/var/log/lxc"]) unless Dir.exists?("/var/log/lxc")
       rescue File::AccessDeniedError
       end
 
@@ -43,10 +43,12 @@ module SailContainers::Infrastructure
         # If it failed, extract the real reason from the trace log
         if File.exists?(log_path)
           # Grab the last 100 lines of the trace log to capture the root SYSERROR
+          # LCOV_EXCL_START - kcov wrongly reports the lines below as uncovered *but* the line with `raise` is being shown as covered
           trace_tail = File.read(log_path).lines.last(100).join("\n")
 
           # Enhance the original error message
           enhanced_msg = "#{ex.message}\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
+          # LCOV_EXCL_STOP
           raise Exceptions::SystemExecutionError.new(enhanced_msg)
         else
           raise ex
@@ -73,8 +75,8 @@ module SailContainers::Infrastructure
     protected def execute!(command : String, args : Array(String)) : Nil
       result = Process.capture_result([command] + args)
 
+      # LCOV_EXCL_START - kcov wrongly reports the lines below as uncovered *but* the line with `raise` is being shown as covered
       unless result.status.success?
-        # LCOV_EXCL_START
         error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
         # LCOV_EXCL_STOP
         raise Exceptions::SystemExecutionError.new("Command '#{command} #{args.join(" ")}' failed: #{error_msg}")
