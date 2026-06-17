@@ -12,7 +12,8 @@ if ENV["E2E"]? == "true"
       client = SailContainers::Client.new(env: "production")
       node_name = "e2e-test-node-#{Time.utc.to_unix_ms}"
 
-      networks = [SailContainers::Models::Network.new("sail0", "192.168.200.10/24")]
+      # Explicitly disable l2proxy to bypass the Ubuntu 24.04 / Kernel 6.8 LXC bug during CI
+      networks = [SailContainers::Models::Network.new("sail0", "192.168.200.10/24", l2proxy: false)]
 
       begin
         # 1. CREATE

@@ -36,7 +36,12 @@ describe SailContainers::Infrastructure::LxcCliDriver do
     driver = TestLxcCliDriver.new
 
     driver.start("my-container")
-    driver.executed_commands.last.should eq(["lxc-start", "-n", "my-container"])
+    # Update this assertion to include the new logging flags
+    driver.executed_commands.last.should eq([
+      "lxc-start", "-n", "my-container",
+      "--logfile", "/var/log/lxc/my-container.log",
+      "--logpriority", "TRACE",
+    ])
 
     driver.stop("my-container")
     driver.executed_commands.last.should eq(["lxc-stop", "-n", "my-container"])

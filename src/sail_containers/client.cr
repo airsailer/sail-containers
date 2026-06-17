@@ -146,7 +146,7 @@ module SailContainers
       # Wipe previous orchestrated network settings
       config.clear_prefix("lxc.net.")
 
-      # Inject multi-vlan configurations identically to the DeepWiki specs
+      # Inject multi-vlan configurations
       networks.each_with_index do |net, index|
         prefix = "lxc.net.#{index}"
         config.set("#{prefix}.type", "ipvlan")
@@ -155,7 +155,9 @@ module SailContainers
         config.set("#{prefix}.flags", "up")
         config.set("#{prefix}.ipv4.address", net.ip)
         config.set("#{prefix}.ipv4.gateway", "dev")
-        config.set("#{prefix}.l2proxy", "1")
+
+        # Write 1 or 0 based on the model's explicit parameter
+        config.set("#{prefix}.l2proxy", net.l2proxy ? "1" : "0")
       end
 
       config.save!

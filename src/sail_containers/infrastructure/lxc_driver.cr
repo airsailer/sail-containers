@@ -27,26 +27,31 @@ module SailContainers::Infrastructure
       # Always tell LXC to write a trace log so we can debug failures
       log_path = "/var/log/lxc/#{name}.log"
 
-      # Ensure the directory exists
-      Dir.mkdir_p("/var/log/lxc") unless Dir.exists?("/var/log/lxc")
+      # Try to ensure the directory exists, but don't crash if we lack permissions.
+      # (Unit tests run unprivileged, and LXC itself will surface the correct error later if it matters).
+      begin
+        Dir.mkdir_p("/var/log/lxc") unless Dir.exists?("/var/log/lxc")
+      rescue File::AccessDeniedError
+      end
 
       args = ["-n", name, "--logfile", log_path, "--logpriority", "TRACE"]
-      result = Process.capture_result(["lxc-start"] + args)
 
-      unless result.status.success?
-        error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
-
+      begin
+        # Use execute! so our TestLxcCliDriver can intercept it during unit tests
+        execute!("lxc-start", args)
+      rescue ex : Exceptions::SystemExecutionError
         # If it failed, extract the real reason from the trace log
         if File.exists?(log_path)
           # Grab the last 100 lines of the trace log to capture the root SYSERROR
           trace_tail = File.read(log_path).lines.last(100).join("\n")
-          error_msg += "\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
-        end
 
-        raise Exceptions::SystemExecutionError.new("Command 'lxc-start -n #{name}' failed: #{error_msg}")
+          # Enhance the original error message
+          enhanced_msg = "#{ex.message}\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
+          raise Exceptions::SystemExecutionError.new(enhanced_msg)
+        else
+          raise ex
+        end
       end
-    rescue File::NotFoundError
-      raise Exceptions::SystemExecutionError.new("LXC CLI tool 'lxc-start' is not installed or not found in PATH.")
     end
 
     def stop(name : String) : Nil
