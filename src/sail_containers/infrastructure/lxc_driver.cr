@@ -10,45 +10,33 @@ module SailContainers::Infrastructure
   end
 
   class LxcCliDriver < LxcDriver
+    getter lxc_base_path : String
+
+    # Allow injecting the base path so tests can isolate it
+    def initialize(@lxc_base_path : String = "/var/lib/lxc")
+    end
+
     def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
       if local_template
         args = ["-n", template, "-N", name] + storage_args
         execute!("lxc-copy", args)
       else
-        # Safely unwrap release to strictly avoid .not_nil!
         safe_release = release || raise Exceptions::ConfigurationError.new("Release is strictly required for remote templates")
-
         args = ["-n", name] + storage_args + ["--template", "download", "--", "--dist", template, "--release", safe_release, "--arch", "amd64"]
         execute!("lxc-create", args)
       end
     end
 
     def start(name : String) : Nil
-      # Always tell LXC to write a trace log so we can debug failures
-      log_path = "/var/log/lxc/#{name}.log"
-
-      # Try to ensure the directory exists, but don't crash if we lack permissions.
-      # (Unit tests run unprivileged, and LXC itself will surface the correct error later if it matters).
-      begin
-        execute!("mkdir", ["-p", "/var/log/lxc"]) unless Dir.exists?("/var/log/lxc")
-      rescue File::AccessDeniedError
-      end
-
+      log_path = File.join(@lxc_base_path, name, "trace.log")
       args = ["-n", name, "--logfile", log_path, "--logpriority", "TRACE"]
 
       begin
-        # Use execute! so our TestLxcCliDriver can intercept it during unit tests
         execute!("lxc-start", args)
       rescue ex : Exceptions::SystemExecutionError
-        # If it failed, extract the real reason from the trace log
         if File.exists?(log_path)
-          # Grab the last 100 lines of the trace log to capture the root SYSERROR
-          # LCOV_EXCL_START - kcov wrongly reports the lines below as uncovered *but* the line with `raise` is being shown as covered
           trace_tail = File.read(log_path).lines.last(100).join("\n")
-
-          # Enhance the original error message
           enhanced_msg = "#{ex.message}\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
-          # LCOV_EXCL_STOP
           raise Exceptions::SystemExecutionError.new(enhanced_msg)
         else
           raise ex
@@ -75,14 +63,11 @@ module SailContainers::Infrastructure
     protected def execute!(command : String, args : Array(String)) : Nil
       result = Process.capture_result([command] + args)
 
-      # LCOV_EXCL_START - kcov wrongly reports the lines below as uncovered *but* the line with `raise` is being shown as covered
       unless result.status.success?
         error_msg = result.error.strip.empty? ? result.output.strip : result.error.strip
-        # LCOV_EXCL_STOP
         raise Exceptions::SystemExecutionError.new("Command '#{command} #{args.join(" ")}' failed: #{error_msg}")
       end
     rescue File::NotFoundError
-      # Map the missing binary error strictly to our Domain Exception
       raise Exceptions::SystemExecutionError.new("LXC CLI tool '#{command}' is not installed or not found in PATH.")
     end
   end
