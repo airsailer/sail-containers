@@ -1,5 +1,24 @@
 # Sail Containers changelog
 
+## 0.2.0 - 2026-06-10
+
+### Added
+* **models:** `SailContainers::Models::Network` struct to support configuring multiple interfaces per container. Supports explicit `l2proxy` toggling.
+* **infrastructure:** Toggleable `debug` mode in `LxcCliDriver`. When enabled, it automatically executes LXC with `TRACE` logging and writes the output directly into the container's directory (`/var/lib/lxc/<name>/trace.log`). Traces are automatically appended to Crystal exceptions on failure.
+* **ci:** Complete End-to-End (E2E) GitHub Actions pipeline (`e2e.yml`) that runs real LXC operations and LVM loop-device provisioning. Securely gated behind the `run-e2e` PR label.
+
+### Changed
+* **client:** The `create` method now accepts an array of `Network` objects instead of a single IP, enabling multi-VLAN L3S support.
+* **client:** Replaced `ram_mb` and `disk_gb` with dynamic `ram` and `disk` string arguments. Built-in normalizers now securely parse standard units (`K`, `M`, `G`, `T`, `P`).
+* **client:** Remote template creation now strictly requires a `release` argument (e.g., `noble`).
+* **client:** Added `local_template` boolean to `create` to cleanly branch between remote `linuxcontainers.org` downloads (`lxc-create`) and local offline container cloning (`lxc-copy`).
+* **infrastructure:** `LxcConfigEditor` now supports wiping specific configuration prefixes (`clear_prefix`) to cleanly re-sync dynamically orchestrated network directives without leaving ghost interfaces.
+* **safety:** Removed `.not_nil!` usages across the codebase in favor of safe nil-coalescing and strict Domain Exceptions.
+
+### Fixed
+* **infrastructure:** Gracefully trapped OS-level `File::NotFoundError` exceptions in `LxcCliDriver` (e.g., when the LXC binary isn't installed) and mapped them strictly to `SystemExecutionError` to protect the Hexagonal Architecture boundary.
+* **networking:** Made `l2proxy` toggleable on a per-network basis to provide a clean workaround for the `EEXIST` routing collision bug present in Linux Kernel 6.8 / LXC 5.x on Ubuntu 24.04.
+
 ## 0.1.0 - 2026-06-05
 
 ### Added

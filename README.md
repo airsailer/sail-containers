@@ -53,14 +53,20 @@ client = SailContainers::Client.new(env: "production")
 ### Creating and Managing Containers
 
 ```crystal
-# Create a container with strict limits (2 CPUs, 1024MB RAM, 10GB Disk)
+# Define the network topology (Multi-VLAN supported)
+networks = [
+  SailContainers::Models::Network.new(link: "sail0", ip: "10.0.0.50/24", l2proxy: true)
+]
+
+# Create a container with strict limits
 client.create(
   name: "web-01",
   template: "ubuntu",
+  release: "noble",
   cpus: 2,
-  ram_mb: 1024,
-  disk_gb: 10,
-  ip: "10.0.0.50",
+  ram: "1G",
+  disk: "10G",
+  networks: networks,
   autostart: true
 )
 
@@ -78,8 +84,8 @@ client.destroy("web-01")
 ```crystal
 # Get information about a specific container
 container = client.info("web-01")
-puts container.state      # => "running"
-puts container.ip_address # => "10.0.0.50"
+puts container.state               # => "running"
+puts container.networks.first.ip   # => "10.0.0.50/24"
 
 # List all containers on the host
 containers = client.list
