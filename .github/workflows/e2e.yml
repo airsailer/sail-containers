@@ -28,6 +28,8 @@ jobs:
 
       - name: Install System Dependencies
         run: |
+          curl -fsSL https://repo.airsailer.io/airsailer-archive-keyring.asc | sudo gpg --dearmor -o /usr/share/keyrings/airsailer-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/airsailer-archive-keyring.gpg] https://repo.airsailer.io $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/airsailer.list > /dev/null
           sudo apt-get update
           sudo apt-get install -y lxc lxc-templates lxcfs lvm2 uidmap
 
