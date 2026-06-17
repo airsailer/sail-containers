@@ -1,0 +1,80 @@
+name: E2E Integration Tests (LXC & LVM)
+
+on:
+  # 1. Allow maintainers to click "Run workflow" from the Actions tab
+  workflow_dispatch:
+  # 2. Trigger when a maintainer adds a label to a PR
+  pull_request:
+    # 'labeled' = runs immediately when you click the label
+    # 'synchronize' = runs when a new commit is pushed to the PR
+    types: [labeled, synchronize, opened, reopened]
+
+jobs:
+  e2e-tests:
+    # ONLY execute if manually triggered, OR if the label exactly matches 'run-e2e'
+    # Check if manually triggered OR if the PR's array of labels contains 'run-e2e'
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'run-e2e' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: latest
+
+      - name: Install System Dependencies
+        run: |
+          curl -fsSL https://repo.airsailer.io/airsailer-archive-keyring.asc | sudo gpg --dearmor -o /usr/share/keyrings/airsailer-archive-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/airsailer-archive-keyring.gpg] https://repo.airsailer.io $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/airsailer.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y lxc lxc-templates lxcfs lvm2 uidmap
+
+      - name: Setup LVM Loop Device
+        run: |
+          truncate -s 10G /tmp/lvm_disk.img
+          sudo losetup /dev/loop8 /tmp/lvm_disk.img
+          sudo pvcreate /dev/loop8
+          sudo vgcreate vg0 /dev/loop8
+          sudo lvcreate -l 100%FREE --thinpool airsailer vg0
+
+      - name: Setup Network Interface (sail0)
+        run: |
+          sudo modprobe ipvlan
+
+          # Create a veth pair (full Ethernet devices) to act as a valid IPVLAN parent
+          sudo ip link add sail0 type veth peer name sail0-peer
+          sudo ip link set sail0 up
+          sudo ip link set sail0-peer up
+
+          # Enable IP forwarding (Required by LXC l2proxy)
+          sudo sysctl -w net.ipv4.ip_forward=1
+          sudo sysctl -w net.ipv4.conf.sail0.forwarding=1
+          sudo sysctl -w net.ipv4.conf.all.forwarding=1
+
+      - name: Install Shards
+        run: shards install
+
+      - name: Build E2E Specs
+        run: |
+          mkdir -p bin
+          crystal build spec/e2e_lifecycle_spec.cr -o bin/e2e_spec
+
+      - name: Run E2E Specs
+        run: sudo E2E=true ./bin/e2e_spec
+
+      - name: Dump LXC Diagnostics
+        if: failure()
+        run: |
+          echo "=== cgroup controllers ==="
+          cat /sys/fs/cgroup/cgroup.controllers || true
+          cat /sys/fs/cgroup/cgroup.subtree_control || true
+
+          echo -e "\n=== Container Configs ==="
+          sudo find /var/lib/lxc -name "config" -exec sh -c 'echo "--- {} ---"; sudo cat {}; echo' \;
+
+          echo -e "\n=== lxc-checkconfig ==="
+          sudo lxc-checkconfig

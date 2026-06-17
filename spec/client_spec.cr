@@ -6,12 +6,14 @@ class MockLxcDriver < SailContainers::Infrastructure::LxcDriver
   getter created = [] of String
   getter started = [] of String
   getter destroyed = [] of String
+  getter last_storage_args = [] of String
   property should_fail_on_create = false
   property lxc_base_path = "/var/lib/lxc"
 
   def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
     raise SailContainers::Exceptions::SystemExecutionError.new("Mocked failure") if @should_fail_on_create
     @created << name
+    @last_storage_args = storage_args
 
     dir = File.join(@lxc_base_path, name)
     Dir.mkdir_p(dir)
@@ -165,6 +167,70 @@ describe SailContainers::Client do
 
         driver.destroyed.should contain("test-node")
         resources.active_allocations.has_key?("test-node").should be_false
+      end
+    end
+  end
+
+  describe "Initialization & State Bootstrapping" do
+    it "bootstraps state from the filesystem if resources are not explicitly provided" do
+      temp_lxc_dir = File.join(Dir.tempdir, "sail_tests_bootstrap_#{Time.utc.to_unix_ms}")
+      Dir.mkdir_p(File.join(temp_lxc_dir, "existing-node"))
+      File.write(File.join(temp_lxc_dir, "existing-node", "config"), "lxc.cgroup2.cpuset.cpus = 0,1\n")
+
+      # FIX: Instantiate the mock driver so it doesn't trigger real LXC commands
+      mock_driver = MockLxcDriver.new
+      mock_driver.lxc_base_path = temp_lxc_dir
+
+      begin
+        # Pass the driver explicitly here:
+        client = SailContainers::Client.new(driver: mock_driver, lxc_base_path: temp_lxc_dir)
+
+        client.create(name: "new-node", template: "ubuntu", release: "noble", cpus: 1, autostart: false)
+        info = client.info("new-node")
+        info.cpus.should eq("2")
+      ensure
+        FileUtils.rm_rf(temp_lxc_dir)
+      end
+    end
+  end
+
+  describe "Edge Cases & Validations" do
+    it "raises ConfigurationError if remote template is missing a release" do
+      with_test_client do |client, _, _, _|
+        expect_raises(SailContainers::Exceptions::ConfigurationError, "release' must be specified") do
+          client.create("node", "ubuntu", release: nil, local_template: false)
+        end
+      end
+    end
+
+    it "raises ConfigurationError on invalid size formats" do
+      with_test_client do |client, _, _, _|
+        expect_raises(SailContainers::Exceptions::ConfigurationError, "Invalid size format") do
+          client.create("node", "ubuntu", release: "noble", ram: "1024X") # X is invalid
+        end
+
+        expect_raises(SailContainers::Exceptions::ConfigurationError, "Invalid size format") do
+          client.create("node", "ubuntu", release: "noble", disk: "10Z") # Z is invalid
+        end
+      end
+    end
+
+    it "uses LVM storage arguments in production environments" do
+      temp_lxc_dir = File.join(Dir.tempdir, "sail_tests_prod_#{Time.utc.to_unix_ms}")
+      mock_driver = MockLxcDriver.new
+      mock_driver.lxc_base_path = temp_lxc_dir
+
+      # Initialize as "production"
+      client = SailContainers::Client.new(env: "production", driver: mock_driver, lxc_base_path: temp_lxc_dir)
+
+      begin
+        client.create("lvm-node", "ubuntu", release: "noble", disk: "15G", autostart: false)
+
+        mock_driver.last_storage_args.should contain("lvm")
+        mock_driver.last_storage_args.should contain("--thinpool")
+        mock_driver.last_storage_args.should contain("15G")
+      ensure
+        FileUtils.rm_rf(temp_lxc_dir)
       end
     end
   end
