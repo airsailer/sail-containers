@@ -47,22 +47,28 @@ describe SailContainers::Infrastructure::LxcCliDriver do
     ])
   end
 
-  it "constructs the start, stop, and destroy commands securely" do
+  it "constructs the start, stop, and destroy commands securely (without debug)" do
     driver = TestLxcCliDriver.new
 
     driver.start("my-container")
-    # Update this assertion to match the new isolated trace.log path
-    driver.executed_commands.last.should eq([
-      "lxc-start", "-n", "my-container",
-      "--logfile", "/var/lib/lxc/my-container/trace.log", # <--- UPDATE THIS LINE
-      "--logpriority", "TRACE",
-    ])
+    driver.executed_commands.last.should eq(["lxc-start", "-n", "my-container"])
 
     driver.stop("my-container")
     driver.executed_commands.last.should eq(["lxc-stop", "-n", "my-container"])
 
     driver.destroy("my-container")
     driver.executed_commands.last.should eq(["lxc-destroy", "-n", "my-container", "--force"])
+  end
+
+  it "constructs the start command with trace flags when debug is enabled" do
+    driver = TestLxcCliDriver.new(debug: true)
+
+    driver.start("my-container")
+    driver.executed_commands.last.should eq([
+      "lxc-start", "-n", "my-container",
+      "--logfile", "/var/lib/lxc/my-container/trace.log",
+      "--logpriority", "TRACE",
+    ])
   end
 
   # Test the actual execution paths on the real driver
@@ -90,7 +96,7 @@ describe SailContainers::Infrastructure::LxcCliDriver do
     log_path = File.join(node_dir, "trace.log")
     File.write(log_path, "TRACE: initializing\nERROR: something broke")
 
-    driver = TestLxcCliDriver.new(lxc_base_path: temp_dir)
+    driver = TestLxcCliDriver.new(lxc_base_path: temp_dir, debug: true)
     driver.should_crash_on_start = true
 
     begin
@@ -103,7 +109,7 @@ describe SailContainers::Infrastructure::LxcCliDriver do
   end
 
   it "raises SystemExecutionError without trace logs if the log file is missing" do
-    driver = TestLxcCliDriver.new(lxc_base_path: "/tmp/does-not-exist")
+    driver = TestLxcCliDriver.new(lxc_base_path: "/tmp/does-not-exist", debug: true)
     driver.should_crash_on_start = true
 
     # Should raise the standard error without the trace appendix

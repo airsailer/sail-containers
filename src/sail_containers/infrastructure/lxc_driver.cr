@@ -11,9 +11,10 @@ module SailContainers::Infrastructure
 
   class LxcCliDriver < LxcDriver
     getter lxc_base_path : String
+    getter debug : Bool
 
     # Allow injecting the base path so tests can isolate it
-    def initialize(@lxc_base_path : String = "/var/lib/lxc")
+    def initialize(@lxc_base_path : String = "/var/lib/lxc", @debug : Bool = false)
     end
 
     def create(name : String, template : String, release : String?, local_template : Bool, storage_args : Array(String)) : Nil
@@ -28,19 +29,26 @@ module SailContainers::Infrastructure
     end
 
     def start(name : String) : Nil
-      log_path = File.join(@lxc_base_path, name, "trace.log")
-      args = ["-n", name, "--logfile", log_path, "--logpriority", "TRACE"]
+      args = ["-n", name]
 
-      begin
-        execute!("lxc-start", args)
-      rescue ex : Exceptions::SystemExecutionError
-        if File.exists?(log_path)
-          trace_tail = File.read(log_path).lines.last(100).join("\n")
-          enhanced_msg = "#{ex.message}\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
-          raise Exceptions::SystemExecutionError.new(enhanced_msg)
-        else
-          raise ex
+      if @debug
+        log_path = File.join(@lxc_base_path, name, "trace.log")
+        args.concat(["--logfile", log_path, "--logpriority", "TRACE"])
+
+        begin
+          execute!("lxc-start", args)
+        rescue ex : Exceptions::SystemExecutionError
+          if File.exists?(log_path)
+            trace_tail = File.read(log_path).lines.last(100).join("\n")
+            enhanced_msg = "#{ex.message}\n\n--- LXC INTERNAL TRACE ---\n#{trace_tail}\n--------------------------"
+            raise Exceptions::SystemExecutionError.new(enhanced_msg)
+          else
+            raise ex
+          end
         end
+      else
+        # Fast, silent, production-ready start
+        execute!("lxc-start", args)
       end
     end
 

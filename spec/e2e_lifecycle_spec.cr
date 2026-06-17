@@ -9,7 +9,8 @@ if ENV["E2E"]? == "true"
   describe "E2E: Real LXC & LVM Lifecycle" do
     it "executes a full real-world container lifecycle" do
       # In E2E, we use the REAL driver
-      client = SailContainers::Client.new(env: "production")
+      driver = SailContainers::Infrastructure::LxcCliDriver.new(debug: true)
+      client = SailContainers::Client.new(env: "production", driver: driver)
       node_name = "e2e-test-node-#{Time.utc.to_unix_ms}"
 
       # Explicitly disable l2proxy to bypass the Ubuntu 24.04 / Kernel 6.8 LXC bug during CI

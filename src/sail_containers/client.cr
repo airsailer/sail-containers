@@ -19,7 +19,7 @@ module SailContainers
       resources : Core::ResourceManager? = nil,
       @lxc_base_path : String = "/var/lib/lxc",
     )
-      @driver = driver || Infrastructure::LxcCliDriver.new
+      @driver = driver || Infrastructure::LxcCliDriver.new(lxc_base_path: @lxc_base_path)
 
       if resources
         @resources = resources
